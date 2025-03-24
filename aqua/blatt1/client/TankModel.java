@@ -1,10 +1,7 @@
 package aqua.blatt1.client;
 
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.Observable;
-import java.util.Random;
-import java.util.Set;
+import java.net.InetSocketAddress;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -22,9 +19,41 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	protected int fishCounter = 0;
 	protected final ClientCommunicator.ClientForwarder forwarder;
 
+	protected InetSocketAddress leftNeighbour = null;
+	protected InetSocketAddress rightNeighbour = null;
+
+	private volatile boolean token = false;
+    private static final int TOKEN_TIMEOUT = 3000;
+
 	public TankModel(ClientCommunicator.ClientForwarder forwarder) {
 		this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
 		this.forwarder = forwarder;
+	}
+
+	public synchronized void setLeftNeighbour(InetSocketAddress leftNeighbour) {
+		this.leftNeighbour = leftNeighbour;
+	}
+
+	public synchronized void setRightNeighbour(InetSocketAddress rightNeighbour) {
+		this.rightNeighbour = rightNeighbour;
+	}
+
+	public synchronized void receiveToken() {
+		this.token = true;
+        Timer timer = new Timer();
+		timer.schedule(new TimerTask() {
+			@Override
+			public void run() {
+				if (hasToken()) {
+					token = false;
+					forwarder.handoverToken(leftNeighbour);
+				}
+			}
+		}, TOKEN_TIMEOUT);
+	}
+
+	public synchronized boolean hasToken() {
+		return this.token;
 	}
 
 	synchronized void onRegistration(String id) {
@@ -67,8 +96,14 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 
 			fish.update();
 
-			if (fish.hitsEdge())
-				forwarder.handOff(fish);
+			if (fish.hitsEdge()) {
+				if (hasToken()) {
+				forwarder.handOff(fish,
+						fish.getDirection() == Direction.LEFT ? leftNeighbour : rightNeighbour);
+				} else {
+					fish.reverse();
+				}
+			}
 
 			if (fish.disappears())
 				it.remove();
@@ -96,6 +131,9 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 
 	public synchronized void finish() {
 		forwarder.deregister(id);
+		if (hasToken()) {
+			forwarder.handoverToken(leftNeighbour);
+		}
 	}
 
 }

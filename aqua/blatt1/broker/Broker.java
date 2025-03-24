@@ -1,10 +1,7 @@
 package aqua.blatt1.broker;
 
 import aqua.blatt1.common.Direction;
-import aqua.blatt1.common.msgtypes.DeregisterRequest;
-import aqua.blatt1.common.msgtypes.HandoffRequest;
-import aqua.blatt1.common.msgtypes.RegisterRequest;
-import aqua.blatt1.common.msgtypes.RegisterResponse;
+import aqua.blatt1.common.msgtypes.*;
 import messaging.Endpoint;
 import messaging.Message;
 import aqua.blatt1.common.Properties;
@@ -28,7 +25,7 @@ public final class Broker {
                 if (!(other instanceof Client(InetSocketAddress addr1))) {
                     return false;
                 }
-                return addr.equals(addr1);
+            return addr.equals(addr1);
             }
         }
 
@@ -68,15 +65,38 @@ public final class Broker {
         final int index = clients.indexOf(client_id);
         if ( index < 0) {
             System.out.printf("Deregister: Client %s not found%n", client_id);
-        } else {
-            clients.remove(index);
+            return;
         }
+        final Client leftNeighbour = clients.getLeftNeighorOf(index);
+        final Client rightNeighbour = clients.getRightNeighorOf(index);
+
+        endpoint.send(leftNeighbour.addr, new NeighbourUpdate(Direction.RIGHT, rightNeighbour.addr));
+        endpoint.send(rightNeighbour.addr, new NeighbourUpdate(Direction.LEFT, leftNeighbour.addr));
+
+        clients.remove(index);
     }
 
     private void register(Message msg) {
         final String client_id = String.format("client%d", client_counter.addAndGet(1));
-        clients.add(client_id, new Client(msg.getSender()));
-        endpoint.send(msg.getSender(), new RegisterResponse(client_id));
+        final Client client = new Client(msg.getSender());
+        clients.add(client_id, client);
+        final int client_index = clients.indexOf(client_id);
+        final Client leftNeighbour = clients.getLeftNeighorOf(client_index);
+        final Client rightNeighbour = clients.getRightNeighorOf(client_index);
+
+        endpoint.send(client.addr, new NeighbourUpdate(Direction.LEFT, leftNeighbour.addr));
+        endpoint.send(client.addr, new NeighbourUpdate(Direction.RIGHT, rightNeighbour.addr));
+
+        endpoint.send(leftNeighbour.addr, new NeighbourUpdate(Direction.RIGHT, client.addr));
+        endpoint.send(rightNeighbour.addr, new NeighbourUpdate(Direction.LEFT, client.addr));
+
+        // after the updateNeighbour messages have been sent, we can send the register response
+        // so that the first fish is only spawned when the neighbours are ready
+        endpoint.send(client.addr, new RegisterResponse(client_id));
+
+        if (clients.size() == 1) {
+            endpoint.send(client.addr, new Token());
+        }
     }
 
     private void brokerAsync() {
@@ -139,32 +159,5 @@ public final class Broker {
 
     public static void main(String[] args) {
         new Broker().brokerAsync();
-    }
-
-    private void brokerSync() {
-        while (running) {
-            final Message msg = endpoint.blockingReceive();
-            switch (msg.getPayload()) {
-                case RegisterRequest ignored: {
-                    register(msg);
-                    break;
-                }
-                case DeregisterRequest r: {
-                    deregister(r);
-                    break;
-                }
-                case HandoffRequest r: {
-                    handoff(r, msg);
-                    break;
-                }
-                case PoisonPill ignored: {
-                    running = false;
-                    break;
-                }
-                default:
-                    System.out.printf("Received unknown message: %s%n", msg.getPayload());
-                    break;
-            }
-        }
     }
 }
