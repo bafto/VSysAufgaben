@@ -89,6 +89,11 @@ public final class Broker {
                     continue;
                 }*/
                 final Message msg = endpoint.blockingReceive();
+                if (msg.getPayload() instanceof PoisonPill) {
+                    running = false;
+                    stopRequestThread.interrupt();
+                    System.out.println("received PoisonPill, running = false");
+                }
                 service.execute(new BrokerTask(msg, lock));
             }
             service.shutdown();
@@ -123,12 +128,6 @@ public final class Broker {
                     lock.readLock().lock();
                     handoff(r, msg);
                     lock.readLock().unlock();
-                    break;
-                }
-                case PoisonPill ignored: {
-                    running = false;
-                    stopRequestThread.interrupt();
-                    System.out.println("received PoisonPill, running = false");
                     break;
                 }
                 default:
