@@ -104,11 +104,10 @@ public final class Broker {
         try (ExecutorService service = Executors.newFixedThreadPool(8)) {
             stopRequestThread.start();
             while (running) {
-                /*final Message msg = endpoint.nonBlockingReceive();
+                final Message msg = endpoint.nonBlockingReceive();
                 if (msg == null) {
                     continue;
-                }*/
-                final Message msg = endpoint.blockingReceive();
+                }
                 if (msg.getPayload() instanceof PoisonPill) {
                     running = false;
                     stopRequestThread.interrupt();
