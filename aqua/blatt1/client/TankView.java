@@ -9,10 +9,10 @@ import java.awt.event.MouseEvent;
 import java.util.Observable;
 import java.util.Observer;
 
-import javax.swing.JPanel;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 
 import aqua.blatt1.common.FishModel;
+import aqua.blatt1.common.msgtypes.SnapshotToken;
 
 @SuppressWarnings("serial")
 public class TankView extends JPanel implements Observer {
@@ -48,6 +48,7 @@ public class TankView extends JPanel implements Observer {
 		g2d.drawLine(TankModel.WIDTH - 2, 0, TankModel.WIDTH - 2, TankModel.HEIGHT);
 	}
 
+	private boolean showing = false;
 	private void doDrawing(Graphics g) {
 		Graphics2D g2d = (Graphics2D) g;
 
@@ -58,6 +59,15 @@ public class TankView extends JPanel implements Observer {
 
 		if (!tankModel.hasToken()) {
 			drawBorders(g2d);
+		}
+
+		final SnapshotToken snapshotToken = tankModel.getSnapshotToken();
+		if (snapshotToken != null && !showing) {
+			System.out.println("Snapshot Token: " + snapshotToken.getState());
+			showing = true;
+			final String msg = String.format("%d Snapshot Token", snapshotToken.getState());
+			JOptionPane.showMessageDialog(this, msg, msg, JOptionPane.INFORMATION_MESSAGE);
+			System.out.println("Snapshot Token2: " + snapshotToken.getState());
 		}
 	}
 

@@ -35,7 +35,6 @@ public class ClientCommunicator {
 			if (client == null) {
 				return;
 			}
-			System.out.println("Handing off fish to " + client);
 			endpoint.send(client, new HandoffRequest(fish));
 		}
 
@@ -44,6 +43,20 @@ public class ClientCommunicator {
 				return;
 			}
 			endpoint.send(leftNeighbour, new Token());
+		}
+
+		public void sendSnapshotMarker(InetSocketAddress client) {
+			if (client == null) {
+				return;
+			}
+			endpoint.send(client, new SnapshotMarker());
+		}
+
+		public void handoverSnapshotToken(InetSocketAddress leftNeighbour, SnapshotToken newToken) {
+			if (leftNeighbour == null) {
+				return;
+			}
+			endpoint.send(leftNeighbour, newToken);
 		}
 	}
 
@@ -68,11 +81,9 @@ public class ClientCommunicator {
 				if (msg.getPayload() instanceof NeighbourUpdate u) {
 					switch (u.getDirection()) {
 						case Direction.LEFT:
-							System.out.println("Received neighbour update left: " + u.getNewNeighbour().toString());
 							tankModel.setLeftNeighbour(u.getNewNeighbour());
 							break;
 						case Direction.RIGHT:
-							System.out.println("Received neighbour update right: " + u.getNewNeighbour().toString());
 							tankModel.setRightNeighbour(u.getNewNeighbour());
 							break;
 					}
@@ -80,6 +91,14 @@ public class ClientCommunicator {
 
 				if (msg.getPayload() instanceof Token) {
 					tankModel.receiveToken();
+				}
+
+				if (msg.getPayload() instanceof SnapshotMarker) {
+					tankModel.receiveSnapshotMarker(msg.getSender());
+				}
+
+				if (msg.getPayload() instanceof SnapshotToken t) {
+					tankModel.receiveSnapshotToken(t);
 				}
 			}
 			System.out.println("Receiver stopped.");
