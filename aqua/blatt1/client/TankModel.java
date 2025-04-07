@@ -2,13 +2,22 @@ package aqua.blatt1.client;
 
 import java.net.InetSocketAddress;
 import java.util.*;
+import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.FishModel;
+import aqua.blatt1.common.msgtypes.SnapshotToken;
+
+import javax.swing.*;
 
 public class TankModel extends Observable implements Iterable<FishModel> {
+	private enum RecordingState {
+		IDLE, LEFT, RIGHT, BOTH
+	}
 
 	public static final int WIDTH = 600;
 	public static final int HEIGHT = 350;
@@ -25,6 +34,10 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	private volatile boolean token = false;
     private static final int TOKEN_TIMEOUT = 3000;
 
+	private Integer snapshotState = null;
+	private RecordingState recordingState = RecordingState.IDLE;
+	private Function<Integer, Void> snapshotCollectionCallback;
+
 	public TankModel(ClientCommunicator.ClientForwarder forwarder) {
 		this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
 		this.forwarder = forwarder;
@@ -36,6 +49,76 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 
 	public synchronized void setRightNeighbour(InetSocketAddress rightNeighbour) {
 		this.rightNeighbour = rightNeighbour;
+	}
+
+	private int calculateLocalState() {
+		return (int)fishies.stream().filter(Predicate.not(FishModel::isDeparting)).count();
+	}
+
+	public synchronized void initiateSnapshot() {
+		System.out.println("Initiating snapshot for Client " + id);
+		this.recordingState = RecordingState.BOTH;
+		this.snapshotState = calculateLocalState();
+		forwarder.sendSnapshotMarker(leftNeighbour);
+		forwarder.sendSnapshotMarker(rightNeighbour);
+	}
+
+	public void collectSnapshot(Function<Integer, Void> snapshotCollectionCallback) {
+		if (snapshotState == null) {
+			return;
+		}
+		this.snapshotCollectionCallback = snapshotCollectionCallback;
+		forwarder.sendSnapshotToken(leftNeighbour, snapshotState);
+		this.snapshotState = null;
+	}
+
+	public void receiveSnapshotToken(SnapshotToken t) {
+		if (snapshotState == null) {
+			snapshotCollectionCallback.apply(t.getState());
+			return;
+		}
+		forwarder.sendSnapshotToken(leftNeighbour, t.getState() + snapshotState);
+		this.snapshotState = null;
+	}
+
+	public void receiveSnapshotMarker(InetSocketAddress sender) {
+		System.out.println("Received snapshot marker from " + sender + " for Client " + id);
+		switch (recordingState) {
+		case IDLE:
+			System.out.println("starting snapshot for Client " + id);
+			snapshotState = calculateLocalState();
+			if (sender.equals(leftNeighbour)) {
+				recordingState = RecordingState.RIGHT;
+			} else if (sender.equals(rightNeighbour)) {
+				recordingState = RecordingState.LEFT;
+			}
+			forwarder.sendSnapshotMarker(leftNeighbour);
+			forwarder.sendSnapshotMarker(rightNeighbour);
+			break;
+		case LEFT:
+			if (!sender.equals(leftNeighbour)) {
+				break;
+			}
+			recordingState = RecordingState.IDLE;
+			break;
+		case RIGHT:
+			if (!sender.equals(rightNeighbour)) {
+				break;
+			}
+			recordingState = RecordingState.IDLE;
+			break;
+		case BOTH:
+			if (sender.equals(leftNeighbour)) {
+				recordingState = RecordingState.RIGHT;
+			} else if (sender.equals(rightNeighbour)) {
+				recordingState = RecordingState.LEFT;
+			}
+			break;
+		}
+
+		if (recordingState == RecordingState.IDLE) {
+			System.out.println(String.format("Snapshot beendet für Client %s, Local State: ", id) + snapshotState);
+		}
 	}
 
 	public synchronized void receiveToken() {
@@ -76,6 +159,24 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	synchronized void receiveFish(FishModel fish) {
 		fish.setToStart();
 		fishies.add(fish);
+
+		switch (recordingState) {
+		case IDLE:
+			break;
+		case LEFT:
+			if (fish.getDirection() == Direction.RIGHT) {
+				snapshotState++;
+			}
+			break;
+		case RIGHT:
+			if (fish.getDirection() == Direction.LEFT) {
+				snapshotState++;
+			}
+			break;
+		case BOTH:
+			snapshotState++;
+			break;
+		}
 	}
 
 	public String getId() {
