@@ -55,21 +55,13 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 		return (int)fishies.stream().filter(Predicate.not(FishModel::isDeparting)).count();
 	}
 
-	public synchronized void initiateSnapshot() {
+	public synchronized void initiateSnapshot(Function<Integer, Void> snapshotCollectionCallback) {
 		System.out.println("Initiating snapshot for Client " + id);
 		this.recordingState = RecordingState.BOTH;
 		this.snapshotState = calculateLocalState();
+		this.snapshotCollectionCallback = snapshotCollectionCallback;
 		forwarder.sendSnapshotMarker(leftNeighbour);
 		forwarder.sendSnapshotMarker(rightNeighbour);
-	}
-
-	public void collectSnapshot(Function<Integer, Void> snapshotCollectionCallback) {
-		if (snapshotState == null) {
-			return;
-		}
-		this.snapshotCollectionCallback = snapshotCollectionCallback;
-		forwarder.sendSnapshotToken(leftNeighbour, snapshotState);
-		this.snapshotState = null;
 	}
 
 	public void receiveSnapshotToken(SnapshotToken t) {
@@ -118,6 +110,10 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 
 		if (recordingState == RecordingState.IDLE) {
 			System.out.println(String.format("Snapshot beendet für Client %s, Local State: ", id) + snapshotState);
+			if (snapshotCollectionCallback != null) {
+				forwarder.sendSnapshotToken(leftNeighbour, snapshotState);
+				this.snapshotState = null;
+			}
 		}
 	}
 
