@@ -70,6 +70,21 @@ public class ClientCommunicator {
 			System.out.println("sending location request to " + inetSocketAddress);
 			endpoint.send(inetSocketAddress, new LocationRequest(id));
 		}
+
+		public void sendNameResolutionRequest(NameResolutionRequest nameResolutionRequest) {
+			if (nameResolutionRequest == null) {
+				return;
+			}
+			endpoint.send(broker, nameResolutionRequest);
+		}
+
+		public void sendLocationUpdate(InetSocketAddress address, LocationUpdate locationUpdate) {
+			if (address == null) {
+				return;
+			}
+			System.out.println("sending location update to " + address);
+			endpoint.send(address, locationUpdate);
+		}
 	}
 
 	public class ClientReceiver extends Thread {
@@ -117,6 +132,14 @@ public class ClientCommunicator {
 
 				if (msg.getPayload() instanceof LocationRequest r) {
 					tankModel.receiveLocationResponse(r);
+				}
+
+				if (msg.getPayload() instanceof NameResolutionResponse r) {
+					tankModel.receiveNameResolutionResponse(r);
+				}
+
+				if (msg.getPayload() instanceof LocationUpdate u) {
+					tankModel.receiveLocationUpdate(u, msg.getSender());
 				}
 			}
 			System.out.println("Receiver stopped.");

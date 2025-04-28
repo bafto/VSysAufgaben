@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /*
- * This class is not thread-safe and hence must be used in a thread-safe way, e.g. thread confined or 
- * externally synchronized. 
+ * This class is not thread-safe and hence must be used in a thread-safe way, e.g. thread confined or
+ * externally synchronized.
  */
 
 public class ClientCollection<T> {
@@ -53,6 +53,13 @@ public class ClientCollection<T> {
 		return clients.get(index).client;
 	}
 
+	public T getClientById(String id) {
+		for (Client client : clients)
+			if (client.id.equals(id))
+				return client.client;
+		return null;
+	}
+
 	public int size() {
 		return clients.size();
 	}
@@ -64,5 +71,4 @@ public class ClientCollection<T> {
 	public T getRightNeighorOf(int index) {
 		return index < clients.size() - 1 ? clients.get(index + 1).client : clients.get(0).client;
 	}
-
 }

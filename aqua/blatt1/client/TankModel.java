@@ -10,8 +10,7 @@ import java.util.function.Predicate;
 
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.FishModel;
-import aqua.blatt1.common.msgtypes.LocationRequest;
-import aqua.blatt1.common.msgtypes.SnapshotToken;
+import aqua.blatt1.common.msgtypes.*;
 
 import javax.swing.*;
 
@@ -43,7 +42,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	private RecordingState recordingState = RecordingState.IDLE;
 	private Function<Integer, Void> snapshotCollectionCallback;
 
-	private final Map<String, FishLocation> fishLocations = new ConcurrentHashMap<>();
+	private final Map<String, InetSocketAddress> homeAgent = new HashMap<>();
 
 	public TankModel(ClientCommunicator.ClientForwarder forwarder) {
 		this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
@@ -157,14 +156,19 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 					rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
 
 			fishies.add(fish);
-			fishLocations.put(fish.getId(), FishLocation.HERE);
+			homeAgent.put(fish.getId(), null);
 		}
 	}
 
 	synchronized void receiveFish(FishModel fish) {
 		fish.setToStart();
 		fishies.add(fish);
-		fishLocations.put(fish.getId(), FishLocation.HERE);
+
+		if (fish.getTankId() == this.getId()) {
+			homeAgent.put(fish.getId(), null);
+		} else {
+			forwarder.sendNameResolutionRequest(new NameResolutionRequest(fish.getTankId(), fish.getId()));
+		}
 
 		switch (recordingState) {
 		case IDLE:
@@ -207,8 +211,6 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 				if (hasToken()) {
 				forwarder.handOff(fish,
 						fish.getDirection() == Direction.LEFT ? leftNeighbour : rightNeighbour);
-				fishLocations.put(fish.getId(),
-						fish.getDirection() == Direction.LEFT ? FishLocation.LEFT : FishLocation.RIGHT);
 				} else {
 					fish.reverse();
 				}
@@ -246,23 +248,33 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	}
 
 	public synchronized void receiveLocationResponse(final LocationRequest r) {
-		locateFishGlobally(r.getId());
+		locateFishLocally(r.getId());
+	}
+
+	public synchronized void receiveNameResolutionResponse(NameResolutionResponse r) {
+		forwarder.sendLocationUpdate(r.getAddress(), new LocationUpdate(r.getRequestId()));
+	}
+
+	public synchronized void receiveLocationUpdate(LocationUpdate u, InetSocketAddress sender) {
+		homeAgent.put(u.getFishId(), sender);
+	}
+
+	private synchronized void locateFishLocally(final String id) {
+		for (FishModel fish : fishies) {
+			if (fish.getId().equals(id)) {
+				fish.toggle();
+				return;
+			}
+		}
 	}
 
 	public synchronized void locateFishGlobally(final String id) {
-		// search left neighbour if the fish was never here
-		FishLocation loc = fishLocations.getOrDefault(id, FishLocation.LEFT);
-
-		if (loc == FishLocation.HERE) {
-			for (FishModel fish : fishies) {
-				if (fish.getId().equals(id)) {
-					fish.toggle();
-					return;
-				}
-			}
-		} else {
-			forwarder.sendLocationRequest(id,
-					loc == FishLocation.LEFT ? leftNeighbour : rightNeighbour);
+		InetSocketAddress fishTank = homeAgent.get(id);
+		if (fishTank == null) {
+			locateFishLocally(id);
+			return;
 		}
+
+		forwarder.sendLocationRequest(id, fishTank);
 	}
 }

@@ -25,7 +25,7 @@ public final class Broker {
                 if (!(other instanceof Client(InetSocketAddress addr1))) {
                     return false;
                 }
-            return addr.equals(addr1);
+                return addr.equals(addr1);
             }
         }
 
@@ -148,6 +148,15 @@ public final class Broker {
                     handoff(r, msg);
                     lock.readLock().unlock();
                     break;
+                }
+                case NameResolutionRequest r: {
+                    Client c = clients.getClientById(r.getTankId());
+                    if (c == null) {
+                        System.out.printf("NameResolution: Client %s not found%n", r.getTankId());
+                        return;
+                    }
+                    System.out.printf("NameResolution: Client %s found at %s%n", r.getTankId(), c.addr);
+                    endpoint.send(msg.getSender(), new NameResolutionResponse(c.addr, r.getRequestId()));
                 }
                 default:
                     System.out.printf("Received unknown message: %s%n", msg.getPayload());
