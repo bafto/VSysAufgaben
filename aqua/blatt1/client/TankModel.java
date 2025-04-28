@@ -10,6 +10,7 @@ import java.util.function.Predicate;
 
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.FishModel;
+import aqua.blatt1.common.msgtypes.LocationRequest;
 import aqua.blatt1.common.msgtypes.SnapshotToken;
 
 import javax.swing.*;
@@ -17,6 +18,10 @@ import javax.swing.*;
 public class TankModel extends Observable implements Iterable<FishModel> {
 	private enum RecordingState {
 		IDLE, LEFT, RIGHT, BOTH
+	}
+
+	private enum FishLocation {
+		HERE, LEFT, RIGHT
 	}
 
 	public static final int WIDTH = 600;
@@ -37,6 +42,8 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	private Integer snapshotState = null;
 	private RecordingState recordingState = RecordingState.IDLE;
 	private Function<Integer, Void> snapshotCollectionCallback;
+
+	private final Map<String, FishLocation> fishLocations = new ConcurrentHashMap<>();
 
 	public TankModel(ClientCommunicator.ClientForwarder forwarder) {
 		this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
@@ -150,12 +157,14 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 					rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
 
 			fishies.add(fish);
+			fishLocations.put(fish.getId(), FishLocation.HERE);
 		}
 	}
 
 	synchronized void receiveFish(FishModel fish) {
 		fish.setToStart();
 		fishies.add(fish);
+		fishLocations.put(fish.getId(), FishLocation.HERE);
 
 		switch (recordingState) {
 		case IDLE:
@@ -198,6 +207,8 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 				if (hasToken()) {
 				forwarder.handOff(fish,
 						fish.getDirection() == Direction.LEFT ? leftNeighbour : rightNeighbour);
+				fishLocations.put(fish.getId(),
+						fish.getDirection() == Direction.LEFT ? FishLocation.LEFT : FishLocation.RIGHT);
 				} else {
 					fish.reverse();
 				}
@@ -234,4 +245,24 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 		}
 	}
 
+	public synchronized void receiveLocationResponse(final LocationRequest r) {
+		locateFishGlobally(r.getId());
+	}
+
+	public synchronized void locateFishGlobally(final String id) {
+		// search left neighbour if the fish was never here
+		FishLocation loc = fishLocations.getOrDefault(id, FishLocation.LEFT);
+
+		if (loc == FishLocation.HERE) {
+			for (FishModel fish : fishies) {
+				if (fish.getId().equals(id)) {
+					fish.toggle();
+					return;
+				}
+			}
+		} else {
+			forwarder.sendLocationRequest(id,
+					loc == FishLocation.LEFT ? leftNeighbour : rightNeighbour);
+		}
+	}
 }

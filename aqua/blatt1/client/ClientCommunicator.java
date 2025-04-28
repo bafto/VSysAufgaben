@@ -61,6 +61,15 @@ public class ClientCommunicator {
 			System.out.println("sending snapshot token to " + leftNeighbour);
 			endpoint.send(leftNeighbour, new SnapshotToken(sn));
 		}
+
+		public void sendLocationRequest(final String id, final InetSocketAddress inetSocketAddress) {
+			if (inetSocketAddress == null) {
+				return;
+			}
+
+			System.out.println("sending location request to " + inetSocketAddress);
+			endpoint.send(inetSocketAddress, new LocationRequest(id));
+		}
 	}
 
 	public class ClientReceiver extends Thread {
@@ -104,6 +113,10 @@ public class ClientCommunicator {
 
 				if (msg.getPayload() instanceof SnapshotToken t) {
 					tankModel.receiveSnapshotToken(t);
+				}
+
+				if (msg.getPayload() instanceof LocationRequest r) {
+					tankModel.receiveLocationResponse(r);
 				}
 			}
 			System.out.println("Receiver stopped.");
