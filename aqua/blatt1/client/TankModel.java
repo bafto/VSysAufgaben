@@ -67,6 +67,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	public void receiveSnapshotToken(SnapshotToken t) {
 		if (snapshotState == null) {
 			snapshotCollectionCallback.apply(t.getState());
+			snapshotCollectionCallback = null;
 			return;
 		}
 		forwarder.sendSnapshotToken(leftNeighbour, t.getState() + snapshotState);
