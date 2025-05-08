@@ -164,7 +164,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 		fish.setToStart();
 		fishies.add(fish);
 
-		if (fish.getTankId() == this.getId()) {
+		if (fish.getTankId().equals(this.getId())) {
 			homeAgent.put(fish.getId(), null);
 		} else {
 			forwarder.sendNameResolutionRequest(new NameResolutionRequest(fish.getTankId(), fish.getId()));
