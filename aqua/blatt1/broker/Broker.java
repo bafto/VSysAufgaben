@@ -6,8 +6,10 @@ import messaging.Endpoint;
 import messaging.Message;
 import aqua.blatt1.common.Properties;
 
+import java.util.Timer;
 import javax.swing.*;
 import java.net.InetSocketAddress;
+import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -15,20 +17,41 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public final class Broker {
-    private record Client(InetSocketAddress addr) {
+    private record Client(InetSocketAddress addr, long endOfLease) {
 
         @Override
             public boolean equals(Object other) {
                 if (other == this) {
                     return true;
                 }
-                if (!(other instanceof Client(InetSocketAddress addr1))) {
+                if (!(other instanceof Client(InetSocketAddress addr1, long eol))) {
                     return false;
                 }
                 return addr.equals(addr1);
             }
         }
 
+        private static class LockingTimerTask extends TimerTask {
+            private final ReadWriteLock lock;
+            private final Runnable r;
+
+            public LockingTimerTask(ReadWriteLock lock, Runnable r) {
+                this.lock = lock;
+                this.r = r;
+            }
+
+            @Override
+            public void run() {
+                lock.writeLock().lock();
+                try {
+                    r.run();
+                } finally {
+                    lock.writeLock().unlock();
+                }
+            }
+        }
+
+        private static final long LEASE_TIME = 3000;
     private final Endpoint endpoint = new Endpoint(Properties.PORT);
     private final ClientCollection<Client> clients = new ClientCollection<>();
     private final AtomicInteger client_counter = new AtomicInteger();
@@ -37,9 +60,27 @@ public final class Broker {
         running = false;
     });
     private volatile boolean running = true;
+    private final Timer timer = new Timer();
+
+    private void startCheckLeaseTask(final ReadWriteLock lock) {
+        timer.schedule(new LockingTimerTask(lock, () -> {
+            System.out.println("Checking leases...");
+            long now = System.currentTimeMillis();
+            for (int i = 0; i < clients.size(); i++) {
+                final Client client = clients.getClient(i);
+                final String id = clients.getId(i);
+                if (client.endOfLease < now) {
+                    System.out.printf("Lease expired for %s%n", client.addr);
+                    deregister(new DeregisterRequest(id));
+                } else {
+                    System.out.printf("Lease (%d) for %s is still valid%n", client.endOfLease, client.addr);
+                }
+            }
+        }), LEASE_TIME, LEASE_TIME * 2);
+    }
 
     private void handoff(HandoffRequest r, Message msg) {
-        final int index = clients.indexOf(new Client(msg.getSender()));
+        final int index = clients.indexOf(new Client(msg.getSender(), 0));
         if (index < 0) {
             System.out.printf("Handoff: Client %s not found%n", r.getFish().getTankId());
             return;
@@ -77,9 +118,20 @@ public final class Broker {
     }
 
     private void register(Message msg) {
-        final String client_id = String.format("client%d", client_counter.addAndGet(1));
-        final Client client = new Client(msg.getSender());
+        long now = System.currentTimeMillis();
+        final Client client = new Client(msg.getSender(), now + LEASE_TIME);
+        // handle re-register with updated lease
+        final int index = clients.indexOf(client);
+        String client_id = "";
+        if (index >= 0) {
+            System.out.printf("Re-register: Client %s found, updating lease time%n", client_id);
+            client_id = clients.getId(index);
+            clients.remove(index);
+        } else {
+            client_id = String.format("client%d", client_counter.addAndGet(1));
+        }
         clients.add(client_id, client);
+
         final int client_index = clients.indexOf(client_id);
         final Client leftNeighbour = clients.getLeftNeighorOf(client_index);
         final Client rightNeighbour = clients.getRightNeighorOf(client_index);
@@ -92,7 +144,7 @@ public final class Broker {
 
         // after the updateNeighbour messages have been sent, we can send the register response
         // so that the first fish is only spawned when the neighbours are ready
-        endpoint.send(client.addr, new RegisterResponse(client_id));
+        endpoint.send(client.addr, new RegisterResponse(client_id, LEASE_TIME));
 
         if (clients.size() == 1) {
             endpoint.send(client.addr, new Token());
@@ -103,6 +155,7 @@ public final class Broker {
         final ReadWriteLock lock = new ReentrantReadWriteLock();
         try (ExecutorService service = Executors.newFixedThreadPool(8)) {
             stopRequestThread.start();
+            startCheckLeaseTask(lock);
             while (running) {
                 final Message msg = endpoint.nonBlockingReceive();
                 if (msg == null) {

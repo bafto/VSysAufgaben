@@ -41,6 +41,8 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	private Integer snapshotState = null;
 	private RecordingState recordingState = RecordingState.IDLE;
 	private Function<Integer, Void> snapshotCollectionCallback;
+	Timer t = new Timer();
+	private boolean first_registration = true;
 
 	private final Map<String, InetSocketAddress> homeAgent = new HashMap<>();
 
@@ -126,8 +128,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 
 	public synchronized void receiveToken() {
 		this.token = true;
-        Timer timer = new Timer();
-		timer.schedule(new TimerTask() {
+		t.schedule(new TimerTask() {
 			@Override
 			public void run() {
 				if (hasToken()) {
@@ -142,9 +143,21 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 		return this.token;
 	}
 
-	synchronized void onRegistration(String id) {
+	synchronized void onRegistration(String id, long leaseTime) {
 		this.id = id;
-		newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
+
+		t.schedule(new TimerTask() {
+			@Override
+			public void run() {
+				System.out.printf("Lease expired for %s, re-registering%n", id);
+				forwarder.register();
+			}
+		}, leaseTime);
+
+		if (first_registration) {
+			this.first_registration = false;
+			newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
+		}
 	}
 
 	public synchronized void newFish(int x, int y) {

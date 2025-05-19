@@ -52,6 +52,9 @@ public class ClientCollection<T> {
 	public T getClient(int index) {
 		return clients.get(index).client;
 	}
+	public String getId(int index) {
+		return clients.get(index).id;
+	}
 
 	public T getClientById(String id) {
 		for (Client client : clients)
