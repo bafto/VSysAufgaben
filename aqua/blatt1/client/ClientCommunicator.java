@@ -1,19 +1,25 @@
 package aqua.blatt1.client;
 
 import java.net.InetSocketAddress;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 
 import aqua.blatt1.common.Direction;
+import aqua.blatt1.common.SecureEndpoint;
 import aqua.blatt1.common.msgtypes.*;
 import messaging.Endpoint;
 import messaging.Message;
 import aqua.blatt1.common.FishModel;
 import aqua.blatt1.common.Properties;
 
+import javax.crypto.NoSuchPaddingException;
+
 public class ClientCommunicator {
 	private final Endpoint endpoint;
 
-	public ClientCommunicator() {
-		endpoint = new Endpoint();
+	public ClientCommunicator() throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, InvalidAlgorithmParameterException {
+		endpoint = new SecureEndpoint(new Endpoint());
 	}
 
 	public class ClientForwarder {

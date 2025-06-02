@@ -1,12 +1,17 @@
 package aqua.blatt1.broker;
 
 import aqua.blatt1.common.Direction;
+import aqua.blatt1.common.SecureEndpoint;
 import aqua.blatt1.common.msgtypes.*;
 import messaging.Endpoint;
 import messaging.Message;
 import aqua.blatt1.common.Properties;
 
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Timer;
+import javax.crypto.NoSuchPaddingException;
 import javax.swing.*;
 import java.net.InetSocketAddress;
 import java.util.TimerTask;
@@ -17,6 +22,9 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public final class Broker {
+    public Broker() throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, InvalidAlgorithmParameterException {
+    }
+
     private record Client(InetSocketAddress addr, long endOfLease) {
 
         @Override
@@ -52,7 +60,7 @@ public final class Broker {
         }
 
         private static final long LEASE_TIME = 3000;
-    private final Endpoint endpoint = new Endpoint(Properties.PORT);
+    private final Endpoint endpoint = new SecureEndpoint(new Endpoint(Properties.PORT));
     private final ClientCollection<Client> clients = new ClientCollection<>();
     private final AtomicInteger client_counter = new AtomicInteger();
     Thread stopRequestThread = new Thread(() -> {
@@ -218,7 +226,7 @@ public final class Broker {
         }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, InvalidAlgorithmParameterException {
         new Broker().brokerAsync();
     }
 }
